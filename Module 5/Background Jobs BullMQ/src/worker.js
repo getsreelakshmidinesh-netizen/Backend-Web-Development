@@ -1,13 +1,38 @@
+/* eslint-disable no-undef */
 'use strict';
 
-// ─── YOUR FILE, implement this ───────────────────────────────────────────────
-// Create a BullMQ Worker that processes jobs from the 'email' queue.
-//
-// Requirements:
-//  1. Handle job.name === 'otp': send an email with the OTP using transporter.
-//  2. Configure retries: attempts: 3, backoff: { type: 'exponential', delay: 1000 }
-//  3. Log worker.on('completed') and worker.on('failed') events.
-//  4. Throwing inside the worker function → job fails → BullMQ retries.
-//     Returning without throwing → job completed.
+const { Worker } = require('bullmq');
+const { connection } = require('./queue');
+const { transporter } = require('./email');
 
-// TODO: implement
+const worker = new Worker(
+  'email',
+  async (job) => {
+    if (job.name === 'otp') {
+      const { email, otp } = job.data;
+
+      await transporter.sendMail({
+        to: email,
+        subject: 'Your Verification OTP',
+        text: `Your OTP is ${otp}. It expires in 10 minutes.`,
+      });
+
+      console.log(`OTP email sent to ${email}`);
+    } else {
+      throw new Error(`Unknown job type: ${job.name}`);
+    }
+  },
+  {
+    connection,
+  }
+);
+
+worker.on('completed', (job) => {
+  console.log(`Job ${job.id} completed`);
+});
+
+worker.on('failed', (job, err) => {
+  console.error(`Job ${job.id} failed: ${err.message}`);
+});
+
+module.exports = worker;
